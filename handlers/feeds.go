@@ -54,6 +54,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -64,6 +65,34 @@ import (
 )
 
 // AddFeed handles POST /feeds
+// func AddFeed(w http.ResponseWriter, r *http.Request) {
+// 	if r.Method != http.MethodPost {
+// 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+// 		return
+// 	}
+
+// 	var feed models.Feed
+// 	if err := json.NewDecoder(r.Body).Decode(&feed); err != nil {
+// 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+// 		return
+// 	}
+
+// 	userID := middleware.GetUserID(r)
+// 	feed.UserID = userID
+
+// 	err := config.DB.QueryRow(
+// 		"INSERT INTO feeds (url, title, description, user_id) VALUES ($1, $2, $3, $4) RETURNING id",
+// 		feed.URL, feed.Title, feed.Description, feed.UserID).Scan(&feed.ID)
+// 	if err != nil {
+// 		http.Error(w, "Failed to add feed", http.StatusInternalServerError)
+// 		return
+// 	}
+
+// 	go parser.FetchAndStoreFeed(feed.URL, feed.ID)
+
+// 	writeJSON(w, feed)
+// }
+
 func AddFeed(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -79,14 +108,26 @@ func AddFeed(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.GetUserID(r)
 	feed.UserID = userID
 
+	// Try to insert the feed
 	err := config.DB.QueryRow(
 		"INSERT INTO feeds (url, title, description, user_id) VALUES ($1, $2, $3, $4) RETURNING id",
 		feed.URL, feed.Title, feed.Description, feed.UserID).Scan(&feed.ID)
+
 	if err != nil {
-		http.Error(w, "Failed to add feed", http.StatusInternalServerError)
-		return
+		// If insertion failed, check if the feed already exists for the user
+		// query := "SELECT id FROM feeds WHERE url = $1 AND user_id = $2"
+		query := "SELECT id FROM feeds WHERE url = $1"
+		err2 := config.DB.QueryRow(query, feed.URL).Scan(&feed.ID)
+		if err2 != nil {
+			log.Println(err2)
+			http.Error(w, "Failed to add or retrieve feed", http.StatusInternalServerError)
+			return
+		}
 	}
 
+	// Fetch and store items ONLY if:
+	//  - Insert was successful, OR
+	//  - Feed already existed (retrieved above)
 	go parser.FetchAndStoreFeed(feed.URL, feed.ID)
 
 	writeJSON(w, feed)

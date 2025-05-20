@@ -31,4 +31,5 @@ func FetchAndStoreFeed(feedURL string, feedID int) {
 			fmt.Println("Insert error:", err)
 		}
 	}
+	fmt.Println("update successful")
 }
